@@ -26,6 +26,8 @@ curl -i http://localhost:8000/api/orders/standard-1002
 
 Use Grafana Explore with the Loki and Tempo data sources to inspect the matching log and trace.
 
+Grafana also provisions an **Order lookup server errors** alert. It evaluates lookup 5xx responses over five minutes every ten seconds, links to the request dashboard, and treats periods with no matching data as normal.
+
 If port 8000 is occupied, set `ORDER_TRACKER_PORT`, for example:
 
 ```bash
