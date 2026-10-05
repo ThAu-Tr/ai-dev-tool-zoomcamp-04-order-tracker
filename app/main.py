@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,11 +8,50 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from opentelemetry import _logs, metrics, trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import ConsoleLogExporter, SimpleLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import ConsoleMetricExporter, PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pydantic import BaseModel, Field
 
 
 DB_PATH = Path(os.getenv("ORDER_DB_PATH", "data/orders.db"))
 STATUSES = {"received", "preparing", "shipped", "delivered"}
+
+
+def configure_telemetry():
+    """Send all OpenTelemetry signals to stdout for local inspection."""
+    resource = Resource.create({SERVICE_NAME: "order-tracker"})
+
+    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(tracer_provider)
+
+    metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter(), export_interval_millis=1_000)
+    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(ConsoleLogExporter()))
+    _logs.set_logger_provider(logger_provider)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
+
+
+configure_telemetry()
+tracer = trace.get_tracer(__name__)
+meter = metrics.get_meter(__name__)
+order_lookup_requests = meter.create_counter(
+    "order_lookup_requests",
+    unit="{request}",
+    description="Number of order lookup requests by route and HTTP status code",
+)
+logger = logging.getLogger("order_tracker")
 
 
 def connect():
@@ -77,6 +117,36 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Order Tracker", lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app)
+
+
+@app.middleware("http")
+async def observe_order_lookups(request, call_next):
+    """Record a request metric for the single-order lookup endpoint."""
+    if not request.url.path.startswith("/api/orders/") or request.method != "GET":
+        return await call_next(request)
+
+    status_code = 500
+    with tracer.start_as_current_span("order.lookup") as span:
+        span.set_attribute("order.id", request.url.path.rsplit("/", 1)[-1])
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        except HTTPException as exc:
+            status_code = exc.status_code
+            raise
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            raise
+        finally:
+            attributes = {
+                "http.route": "/api/orders/{order_id}",
+                "http.response.status_code": status_code,
+            }
+            order_lookup_requests.add(1, attributes)
+            logger.info("Order lookup completed", extra={"route": attributes["http.route"], "status_code": status_code})
 
 
 @app.get("/")
