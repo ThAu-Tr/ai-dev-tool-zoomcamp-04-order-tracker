@@ -9,6 +9,9 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from opentelemetry import _logs, metrics, trace
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import ConsoleLogExporter, SimpleLogRecordProcessor
@@ -25,18 +28,24 @@ STATUSES = {"received", "preparing", "shipped", "delivered"}
 
 
 def configure_telemetry():
-    """Send all OpenTelemetry signals to stdout for local inspection."""
+    """Export signals to the Collector, or stdout when run outside Compose."""
     resource = Resource.create({SERVICE_NAME: "order-tracker"})
+    use_otlp = os.getenv("OTEL_EXPORTER_MODE", "console") == "otlp"
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+
+    span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True) if use_otlp else ConsoleSpanExporter()
+    metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True) if use_otlp else ConsoleMetricExporter()
+    log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True) if use_otlp else ConsoleLogExporter()
 
     tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
     trace.set_tracer_provider(tracer_provider)
 
-    metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter(), export_interval_millis=1_000)
+    metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=1_000)
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
 
     logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(ConsoleLogExporter()))
+    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
     _logs.set_logger_provider(logger_provider)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
