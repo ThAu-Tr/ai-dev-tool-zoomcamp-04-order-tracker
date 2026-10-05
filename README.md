@@ -1,6 +1,6 @@
 # Order Tracker
 
-**AI Dev Tools Zoomcamp — Homework 04:** This repository is a fork of the Order Tracker starter project, extended for the Week 4 DevOps and observability assignment. The completed coursework adds OpenTelemetry metrics, logs, and traces; an OpenTelemetry Collector with Prometheus, Loki, Tempo, and Grafana; a 5xx alert; and a webhook-triggered coding-agent responder.
+> **AI Dev Tools Zoomcamp — Homework 04:** This repository is a fork of the Order Tracker starter project, extended for the Week 4 DevOps and observability assignment. The completed coursework adds OpenTelemetry metrics, logs, and traces; an OpenTelemetry Collector with Prometheus, Loki, Tempo, and Grafana; a 5xx alert; and a webhook-triggered coding-agent responder.
 
 A small order tracking app for the AI Dev Tools Zoomcamp observability homework. It includes a web page, API, tests, and a Docker Compose setup. You add telemetry, alerts, and an incident responder in Homework 4.
 
