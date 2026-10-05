@@ -1,5 +1,14 @@
 apiVersion: 1
 
+contactPoints:
+  - orgId: 1
+    name: incident-responder
+    receivers:
+      - uid: incident-responder-webhook
+        type: webhook
+        settings:
+          url: http://incident-response:8001/alerts
+
 groups:
   - orgId: 1
     name: order-tracker-alerts
@@ -58,6 +67,8 @@ groups:
         noDataState: OK
         execErrState: Alerting
         for: 0s
+        notification_settings:
+          receiver: incident-responder
         annotations:
           summary: 5xx response(s) recorded for an order lookup.
           endpoint: /api/orders/{order_id}

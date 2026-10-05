@@ -69,12 +69,36 @@ services:
       - loki
       - tempo
 
+  incident-response:
+    build: ./incident-response
+    ports:
+      - "127.0.0.1:${INCIDENT_RESPONSE_PORT:-8001}:8001"
+    environment:
+      INCIDENT_DIR: /data/incidents
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
+      CODEX_COMMAND: codex exec --sandbox danger-full-access
+      CODEX_TIMEOUT_SECONDS: 900
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - incidents:/data/incidents
+      - ./:/workspace
+    depends_on:
+      - loki
+      - tempo
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
 volumes:
   orders:
   prometheus:
   loki:
   tempo:
   grafana:
+  incidents:
 
 networks:
   default:
