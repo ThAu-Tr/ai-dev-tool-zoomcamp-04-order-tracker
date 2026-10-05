@@ -2,6 +2,9 @@
 
 A small order tracking app for the AI Dev Tools Zoomcamp observability homework. It includes a web page, API, tests, and a Docker Compose setup. You add telemetry, alerts, and an incident responder in Homework 4.
 
+This repository is the completed Homework 04 fork. For the course-level
+assignment overview, see the [Homework 04 project page](https://github.com/ThAu-Tr/ai-dev-tool-zoomcamp/tree/main/04-order-tracker).
+
 The main user flow is creating an order and checking its status. Three sample orders are created on first startup.
 
 ## Run it
